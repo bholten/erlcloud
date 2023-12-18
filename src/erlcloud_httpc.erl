@@ -13,7 +13,7 @@
 
 -export([request/6]).
 
--type request_fun() :: 
+-type request_fun() ::
     lhttpc | httpc | hackney |
     {module(), atom()} |
     fun((string(),
@@ -57,24 +57,24 @@ request(URL, Method, Hdrs, Body, Timeout,
     F(URL, Method, Hdrs, Body, Timeout, Config).
 
 request_lhttpc(URL, Method, Hdrs, Body, Timeout, #aws_config{lhttpc_pool = undefined, http_proxy = undefined}) ->
-    lhttpc:request(URL, Method, Hdrs, Body, Timeout, []);
+    wrap_lhttp_error(fun() -> lhttpc:request(URL, Method, Hdrs, Body, Timeout, []) end);
 request_lhttpc(URL, Method, Hdrs, Body, Timeout, #aws_config{http_proxy = HttpProxy, lhttpc_pool = undefined}) ->
     LHttpcOpts = [{proxy, HttpProxy}],
-    lhttpc:request(URL, Method, Hdrs, Body, Timeout, LHttpcOpts);
+    wrap_lhttp_error(fun() -> lhttpc:request(URL, Method, Hdrs, Body, Timeout, LHttpcOpts) end);
 request_lhttpc(URL, Method, Hdrs, Body, Timeout, #aws_config{lhttpc_pool = Pool, http_proxy = undefined}) ->
     LHttpcOpts = [{pool, Pool}, {pool_ensure, true}],
-    lhttpc:request(URL, Method, Hdrs, Body, Timeout, LHttpcOpts);
+    wrap_lhttp_error(fun() -> lhttpc:request(URL, Method, Hdrs, Body, Timeout, LHttpcOpts) end);
 request_lhttpc(URL, Method, Hdrs, Body, Timeout, #aws_config{lhttpc_pool = Pool, http_proxy = HttpProxy}) ->
     LHttpcOpts = [{pool, Pool}, {pool_ensure, true}, {proxy, HttpProxy}],
-    lhttpc:request(URL, Method, Hdrs, Body, Timeout, LHttpcOpts).
+    wrap_lhttp_error(fun() -> lhttpc:request(URL, Method, Hdrs, Body, Timeout, LHttpcOpts) end).
 
 %% Guard clause protects against empty bodied requests from being
 %% unable to find a matching httpc:request call.
-request_httpc(URL, Method, Hdrs, <<>>, Timeout, _Config) 
-    when (Method =:= options) orelse 
-         (Method =:= get) orelse 
-         (Method =:= head) orelse 
-         (Method =:= delete) orelse 
+request_httpc(URL, Method, Hdrs, <<>>, Timeout, _Config)
+    when (Method =:= options) orelse
+         (Method =:= get) orelse
+         (Method =:= head) orelse
+         (Method =:= delete) orelse
          (Method =:= trace) ->
     HdrsStr = [{to_list_string(K), to_list_string(V)} || {K, V} <- Hdrs],
     response_httpc(httpc:request(Method, {URL, HdrsStr},
@@ -145,3 +145,10 @@ to_binary(Val) when erlang:is_list(Val) ->
 to_binary(Val) when erlang:is_binary(Val) ->
   Val.
 
+-spec wrap_lhttp_error(fun()) -> any() | {error, erlcloud_httpc}.
+wrap_lhttp_error(Fun) ->
+    try
+        Fun()
+    catch _:Reason ->
+        {error, {erlcloud_httpc, Reason}}
+    end.
